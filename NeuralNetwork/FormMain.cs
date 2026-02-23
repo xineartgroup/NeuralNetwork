@@ -143,7 +143,7 @@ namespace NeuralNetwork
 
                 Console.WriteLine("Loading training data...");
                 var stopwatch = Stopwatch.StartNew();
-                var (trainInputs, trainOutputs, trainLabels) = trainer.LoadTrainingData(trainSubFolder);
+                var (trainInputs, trainOutputs, trainLabels) = TrainerDigits.LoadTrainingData(trainSubFolder);
                 stopwatch.Stop();
                 Console.WriteLine($"Loaded {trainInputs.Count} training images in {stopwatch.ElapsedMilliseconds}ms");
 
@@ -162,7 +162,7 @@ namespace NeuralNetwork
 
                 Console.WriteLine("Loading validation / test data...");
                 stopwatch.Restart();
-                var (valInputs, valOutputs, valLabels) = trainer.LoadTrainingData(testSubFolder);
+                var (valInputs, valOutputs, valLabels) = TrainerDigits.LoadTrainingData(testSubFolder);
                 stopwatch.Stop();
                 Console.WriteLine($"Loaded {valInputs.Count} validation images in {stopwatch.ElapsedMilliseconds}ms");
 
@@ -252,9 +252,9 @@ namespace NeuralNetwork
                     Console.WriteLine(new string('-', 50));
                     Console.WriteLine();
 
-                    if (valInputs.Count > 0 && valAccuracy > 0.999)
+                    if (valInputs.Count > 0 && valAccuracy > 0.99)
                     {
-                        Console.WriteLine("Reached 99.9% validation accuracy! Stopping early.");
+                        Console.WriteLine("Reached 99% validation accuracy! Stopping early.");
                         break;
                     }
 
@@ -279,7 +279,7 @@ namespace NeuralNetwork
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message + "\r\n\r\n" + ex.StackTrace);
+                Console.WriteLine(ex.Message + "\n\n" + ex.StackTrace);
                 MessageBox.Show($"Error: {ex.Message}");
             }
             finally
@@ -313,7 +313,7 @@ namespace NeuralNetwork
             {
                 if (sender is RadioButton)
                 {
-                    (inputsFromImage, _, isBlackOnWhiteSelected) = LoadSingleImage(testImagePath, isBlackOnWhite: radioBlackOnWhite.Checked);
+                    (inputsFromImage, _, isBlackOnWhiteSelected) = ImageManip.LoadSingleImage(testImagePath, isBlackOnWhite: radioBlackOnWhite.Checked);
                 }
             }
         }
@@ -333,7 +333,7 @@ namespace NeuralNetwork
                     testImagePath = openFileDialog.FileName;
 
                     Bitmap? bmp;
-                    (inputsFromImage, bmp, isBlackOnWhiteSelected) = LoadSingleImage(testImagePath, isBlackOnWhite: radioBlackOnWhite.Checked);
+                    (inputsFromImage, bmp, isBlackOnWhiteSelected) = ImageManip.LoadSingleImage(testImagePath, isBlackOnWhite: radioBlackOnWhite.Checked);
 
                     if (isBlackOnWhiteSelected)
                     {
@@ -424,90 +424,6 @@ namespace NeuralNetwork
             {
                 Console.WriteLine(ex.Message + "\r\n\r\n" + ex.StackTrace);
                 MessageBox.Show($"Error during inference: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        private (List<double>, Bitmap?, bool) LoadSingleImage(string imagePath, bool isBlackOnWhite = false)
-        {
-            try
-            {
-                const int ImageSize = 28;
-                const int PixelCount = ImageSize * ImageSize;
-
-                using var bitmap = new Bitmap(imagePath);
-
-                // Resize if necessary
-                Bitmap processedBitmap;
-                if (bitmap.Width != ImageSize || bitmap.Height != ImageSize)
-                {
-                    processedBitmap = new Bitmap(ImageSize, ImageSize);
-                    using var graphics = Graphics.FromImage(processedBitmap);
-                    graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                    graphics.DrawImage(bitmap, 0, 0, ImageSize, ImageSize);
-                }
-                else
-                {
-                    processedBitmap = new Bitmap(bitmap);
-                }
-
-                var pixelValues = new List<double>(PixelCount);
-
-                // Lock the bitmap bits for fast unsafe access
-                var rect = new Rectangle(0, 0, ImageSize, ImageSize);
-                var data = processedBitmap.LockBits(rect, System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-
-                int lightCount = 0;
-                int darkCount = 0;
-
-                unsafe
-                {
-                    byte* ptr = (byte*)data.Scan0;
-
-                    for (int y = 0; y < ImageSize; y++)
-                    {
-                        byte* row = ptr + (y * data.Stride);
-
-                        for (int x = 0; x < ImageSize; x++)
-                        {
-                            int pos = x * 4;
-
-                            byte blue = row[pos];
-                            byte green = row[pos + 1];
-                            byte red = row[pos + 2];
-
-                            double grayscale = (0.299 * red + 0.587 * green + 0.114 * blue) / 255.0;
-                            double normalized = grayscale;
-
-                            if (normalized > 0.5)
-                            {
-                                lightCount++;
-                            }
-                            else
-                            {
-                                darkCount++;
-                            }
-
-                            if (isBlackOnWhite)
-                            {
-                                pixelValues.Add(1.0 - normalized); // Invert for black-on-white
-                            }
-                            else
-                            {
-                                pixelValues.Add(normalized);
-                            }
-                        }
-                    }
-                }
-
-                processedBitmap.UnlockBits(data);
-                //processedBitmap.Dispose();
-
-                return (pixelValues, processedBitmap, lightCount > darkCount);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error loading image {imagePath}: {ex.Message}");
-                return ([], null, false);
             }
         }
 

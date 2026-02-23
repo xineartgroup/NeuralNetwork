@@ -1,29 +1,19 @@
-﻿using System.Drawing.Imaging;
-
-namespace NeuralNetwork
+﻿namespace NeuralNetwork
 {
-    /// <summary>
-    /// Utility class for loading handwritten digit images and training the neural network
-    /// </summary>
     public class TrainerDigits
     {
-        private readonly NeuralNetwork _network;
-        private readonly string _trainingFolderPath;
+        private readonly NeuralNetwork _model;
         private readonly Random _random = new();
 
-        private const int ImageSize = 28;
-        private const int PixelCount = ImageSize * ImageSize; // 784
-
-        public TrainerDigits(NeuralNetwork network, string trainingFolderPath)
+        public TrainerDigits(NeuralNetwork model, string trainingFolderPath)
         {
-            _network = network ?? throw new ArgumentNullException(nameof(network));
-            _trainingFolderPath = trainingFolderPath ?? throw new ArgumentNullException(nameof(trainingFolderPath));
+            _model = model ?? throw new ArgumentNullException(nameof(model));
 
             if (!Directory.Exists(trainingFolderPath))
                 throw new DirectoryNotFoundException($"Training folder not found: {trainingFolderPath}");
         }
 
-        public (List<List<double>> inputs, List<List<double>> outputs, List<int> labels) LoadTrainingData(string folderPath)
+        public static (List<List<double>> inputs, List<List<double>> outputs, List<int> labels) LoadTrainingData(string folderPath)
         {
             var inputs = new List<List<double>>();
             var outputs = new List<List<double>>();
@@ -49,7 +39,7 @@ namespace NeuralNetwork
                     try
                     {
                         // Load and process the image
-                        var (pixelValues, success) = LoadAndProcessImage(imageFile);
+                        var (pixelValues, success) = ImageManip.LoadAndProcessImage(imageFile);
 
                         if (success)
                         {
@@ -67,101 +57,6 @@ namespace NeuralNetwork
 
             Console.WriteLine($"Total loaded images: {inputs.Count}");
             return (inputs, outputs, labels);
-        }
-
-        private (List<double> pixelValues, bool success) LoadAndProcessImage(string imagePath)
-        {
-            try
-            {
-                using var bitmap = new Bitmap(imagePath);
-
-                if (bitmap.Width != ImageSize || bitmap.Height != ImageSize)
-                {
-                    Console.WriteLine($"Warning: Image {imagePath} has dimensions {bitmap.Width}x{bitmap.Height}, expected 28x28. Resizing...");
-                    return (ResizeAndProcessImage(imagePath), true);
-                }
-
-                var pixelValues = new List<double>(PixelCount);
-
-                Rectangle rect = new(0, 0, ImageSize, ImageSize);
-                BitmapData data = bitmap.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-
-                unsafe
-                {
-                    byte* ptr = (byte*)data.Scan0;
-
-                    for (int y = 0; y < ImageSize; y++)
-                    {
-                        byte* row = ptr + (y * data.Stride);
-
-                        for (int x = 0; x < ImageSize; x++)
-                        {
-                            int pos = x * 4; // 4 bytes per pixel (ARGB)
-
-                            byte blue = row[pos];
-                            byte green = row[pos + 1];
-                            byte red = row[pos + 2];
-                            // byte alpha = row[pos + 3]; // Alpha channel not needed for grayscale
-
-                            double grayscale = (0.299 * red + 0.587 * green + 0.114 * blue) / 255.0;
-
-                            double normalized = grayscale;
-
-                            pixelValues.Add(normalized);
-                        }
-                    }
-                }
-
-                bitmap.UnlockBits(data);
-                return (pixelValues, true);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error loading image {imagePath}: {ex.Message}");
-                return ([], false);
-            }
-        }
-
-        private List<double> ResizeAndProcessImage(string imagePath)
-        {
-            using var original = new Bitmap(imagePath);
-            using var resized = new Bitmap(ImageSize, ImageSize);
-
-            using (var graphics = Graphics.FromImage(resized))
-            {
-                graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                graphics.DrawImage(original, 0, 0, ImageSize, ImageSize);
-            }
-
-            var pixelValues = new List<double>(PixelCount);
-
-            Rectangle rect = new(0, 0, ImageSize, ImageSize);
-            BitmapData data = resized.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-
-            unsafe
-            {
-                byte* ptr = (byte*)data.Scan0;
-
-                for (int y = 0; y < ImageSize; y++)
-                {
-                    byte* row = ptr + (y * data.Stride);
-
-                    for (int x = 0; x < ImageSize; x++)
-                    {
-                        int pos = x * 4;
-
-                        byte blue = row[pos];
-                        byte green = row[pos + 1];
-                        byte red = row[pos + 2];
-
-                        double grayscale = (0.299 * red + 0.587 * green + 0.114 * blue) / 255.0;
-                        pixelValues.Add(grayscale);
-                    }
-                }
-            }
-
-            resized.UnlockBits(data);
-            return pixelValues;
         }
 
         private static List<double> CreateOneHotOutput(int digit)
@@ -208,30 +103,62 @@ namespace NeuralNetwork
 
         public List<(List<double> Input, List<double> Output)> AugmentData(List<List<double>> inputs, List<List<double>> outputs, int augmentationFactor = 1)
         {
-            // Augment training data with small variations to improve generalization
             var augmented = new List<(List<double>, List<double>)>();
 
-            // Add original data
+            // 1. Add original data
             for (int i = 0; i < inputs.Count; i++)
             {
                 augmented.Add((inputs[i], outputs[i]));
             }
 
-            // Create augmented versions
+            // 2. Create augmented versions
+            Random rand = new();
             for (int factor = 0; factor < augmentationFactor; factor++)
             {
                 for (int i = 0; i < inputs.Count; i++)
                 {
-                    // Only augment if we have a valid image
-                    if (inputs[i].Count == PixelCount)
+                    if (inputs[i].Count == ImageManip.PixelCount)
                     {
-                        var augmentedInput = AddRandomNoise(inputs[i], noiseLevel: 0.05);
-                        augmented.Add((augmentedInput, outputs[i]));
+                        var noisyInput = AddRandomNoise(inputs[i], noiseLevel: 0.05);
+                        augmented.Add((noisyInput, outputs[i]));
+
+                        var rotatedInput = RotateImage(inputs[i], angleDegrees: (rand.NextDouble() * 30) - 15);
+                        augmented.Add((rotatedInput, outputs[i]));
                     }
                 }
             }
 
             return augmented;
+        }
+
+        private static List<double> RotateImage(List<double> pixels, double angleDegrees)
+        {
+            int size = (int)Math.Sqrt(pixels.Count); // Assuming square image (e.g., 28x28)
+            double[] result = new double[pixels.Count];
+            double angleRad = angleDegrees * Math.PI / 180.0;
+            double center = (size - 1) / 2.0;
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    double relX = x - center;
+                    double relY = y - center;
+
+                    int sourceX = (int)Math.Round(relX * Math.Cos(-angleRad) - relY * Math.Sin(-angleRad) + center);
+                    int sourceY = (int)Math.Round(relX * Math.Sin(-angleRad) + relY * Math.Cos(-angleRad) + center);
+
+                    if (sourceX >= 0 && sourceX < size && sourceY >= 0 && sourceY < size)
+                    {
+                        result[y * size + x] = pixels[sourceY * size + sourceX];
+                    }
+                    else
+                    {
+                        result[y * size + x] = 0; // Padding with black/empty space
+                    }
+                }
+            }
+            return [.. result];
         }
 
         private List<double> AddRandomNoise(List<double> input, double noiseLevel)
@@ -251,7 +178,7 @@ namespace NeuralNetwork
 
             for (int i = 0; i < inputs.Count; i++)
             {
-                var prediction = _network.FeedForward(inputs[i]);
+                var prediction = _model.FeedForward(inputs[i]);
                 int predictedClass = prediction.IndexOf(prediction.Max());
                 int actualClass = expectedOutputs[i].IndexOf(1.0);
 
