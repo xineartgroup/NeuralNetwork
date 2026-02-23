@@ -1,14 +1,17 @@
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
+using static System.Windows.Forms.LinkLabel;
 
 namespace NeuralNetwork
 {
     public partial class FormMain : Form
     {
-        private EnhancedNeuralNetwork? nn = null;
+        private NeuralNetwork? model = null;
         private List<double> inputsFromImage = [];
         private string testImagePath = "";
         private bool isBlackOnWhiteSelected = false;
+
+        private CancellationTokenSource? _cancellationTokenSource = null;
+        private readonly object _pauseLock = new();
 
         public FormMain()
         {
@@ -24,25 +27,38 @@ namespace NeuralNetwork
                     string modelPath = Path.Combine(txtFIle.Text, "model.json");
                     if (File.Exists(modelPath))
                     {
-                        nn = EnhancedNeuralNetwork.LoadFromFile(modelPath);
+                        model = NeuralNetwork.LoadFromFile(modelPath);
                         btnTrain.Text = "Continue Training";
+                        btnRunInference.Enabled = true;
+                    }
+                    else
+                    {
+                        model = new NeuralNetwork(
+                            layers:
+                            [
+                                new (784, ActivationFunctionType.Linear),    // Input layer: 784 (28x28 pixels)
+                                new (128, ActivationFunctionType.ReLU),      // Hidden layer: 1 128 neurons
+                                new (64, ActivationFunctionType.ReLU),       // Hidden layer: 2 64 neurons
+                                new (10, ActivationFunctionType.Softmax)     // Output layer: 10 (digits 0-9)
+                            ],
+                            LossFunctionType.CrossEntropy
+                        )
+                        {
+                            LearningRate = 0.01,
+                            Momentum = 0.9,
+                            WeightDecay = 0.0001
+                        };
+                        btnTrain.Text = "Start Training";
+                        btnRunInference.Enabled = false;
                     }
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine(ex.Message);
+                    btnTrain.Enabled = false;
+                    btnTrain.Text = "Error Loading Model";
                     MessageBox.Show($"Error loading model: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
-            }
-            if (nn != null)
-            {
-                btnTrain.Text = "Continue Training";
-                btnRunInference.Enabled = true;
-            }
-            else
-            {
-                btnTrain.Text = "Start Training";
-                btnRunInference.Enabled = false;
             }
         }
 
@@ -59,33 +75,9 @@ namespace NeuralNetwork
                     string modelPath = Path.Combine(txtFIle.Text, "model.json");
                     if (File.Exists(modelPath))
                     {
-                        nn = EnhancedNeuralNetwork.LoadFromFile(modelPath);
+                        model = NeuralNetwork.LoadFromFile(modelPath);
                         btnTrain.Text = "Continue Training";
                         btnRunInference.Enabled = true;
-                    }
-                    else
-                    {
-                        double learningRate = 0.01;
-
-                        nn = new EnhancedNeuralNetwork(
-                            layers:
-                            [
-                                new (784, ActivationFunctionType.Linear),    // Input layer: 784 (28x28 pixels)
-                                new (128, ActivationFunctionType.ReLU),      // Hidden layer: 1 128 neurons
-                                new (64, ActivationFunctionType.ReLU),       // Hidden layer: 2 64 neurons
-                                new (10, ActivationFunctionType.Softmax)     // Output layer: 10 (digits 0-9)
-                            ],
-                            LossFunctionType.CrossEntropy
-                        )
-                        {
-                            // Set hyperparameters
-                            LearningRate = learningRate,
-                            Momentum = 0.9,
-                            WeightDecay = 0.0001
-                        };
-
-                        btnTrain.Text = "Start Training";
-                        btnRunInference.Enabled = false;
                     }
                 }
                 catch (Exception ex)
@@ -96,31 +88,41 @@ namespace NeuralNetwork
             }
         }
 
-        private void BtnTrain_Click(object sender, EventArgs e)
+        private async void BtnTrain_Click(object sender, EventArgs e)
+        {
+            btnTrain.Enabled = false;
+            btnRunInference.Enabled = false;
+            btnStopTraining.Enabled = true;
+
+            _cancellationTokenSource = new CancellationTokenSource();
+
+            await Task.Run(() => TrainAsync(_cancellationTokenSource.Token));
+        }
+
+        private void BtnStopTraining_Click(object sender, EventArgs e)
+        {
+            _cancellationTokenSource?.Cancel();
+            btnStopTraining.Enabled = false;
+            Console.WriteLine("Stopping training...");
+            txtConsole.Text += "\r\nStatus: Stopping...";
+        }
+
+        private async Task TrainAsync(CancellationToken cancellationToken)
         {
             try
             {
-                btnTrain.Enabled = false;
-                btnRunInference.Enabled = false;
-
-                // Configuration
                 string trainingFolder = txtFIle.Text;
-                int batchSize = 32;
-                int epochs = 20;
-                double validationRatio = 0.2;
 
                 Console.WriteLine("=== Handwritten Digit Recognition Neural Network ===");
 
-                if (nn == null)
+                if (model == null)
                 {
                     Console.WriteLine("No valid neural network was found.");
                     return;
                 }
 
-                // Create trainer
-                var trainer = new DigitTrainer(nn, trainingFolder);
+                var trainer = new TrainerDigits(model, trainingFolder);
 
-                // Load training data
                 Console.WriteLine("Loading training data...");
                 var stopwatch = Stopwatch.StartNew();
 
@@ -135,7 +137,6 @@ namespace NeuralNetwork
                     return;
                 }
 
-                // Check class distribution
                 Console.WriteLine("Class distribution:");
                 for (int i = 0; i < 10; i++)
                 {
@@ -143,11 +144,9 @@ namespace NeuralNetwork
                     Console.WriteLine($"Digit {i}: {count} images");
                 }
 
-                // Optional: Normalize inputs
                 Console.WriteLine("Normalizing inputs...");
-                DigitTrainer.NormalizeInputs(inputs);
+                TrainerDigits.NormalizeInputs(inputs);
 
-                // Optional: Augment data
                 Console.WriteLine("Augmenting training data...");
                 var augmentedData = trainer.AugmentData(inputs, outputs, augmentationFactor: 1);
                 var augInputs = augmentedData.Select(x => x.Input).ToList();
@@ -155,64 +154,83 @@ namespace NeuralNetwork
 
                 Console.WriteLine($"Augmented dataset size: {augInputs.Count} images");
 
-                // Split into training and validation sets
                 Console.WriteLine("Splitting data into training and validation sets...");
-                var (trainInputs, trainOutputs, valInputs, valOutputs) =
-                    trainer.SplitData(augInputs, augOutputs, validationRatio);
+                var (trainInputs, trainOutputs, valInputs, valOutputs) = trainer.SplitData(augInputs, augOutputs, validationRatio: 0.1);
 
                 Console.WriteLine($"Training samples: {trainInputs.Count}");
                 Console.WriteLine($"Validation samples: {valInputs.Count}");
 
-                // Train the network
                 Console.WriteLine("Starting training...");
 
                 double bestAccuracy = 0;
 
-                for (int epoch = 0; epoch < epochs; epoch++)
+                var progress = new Progress<string>(msg =>
                 {
+                    if (txtConsole.InvokeRequired)
+                    {
+                        txtConsole.Invoke(new Action(() =>
+                        {
+                            txtConsole.AppendText(msg + " ");
+                            txtConsole.ScrollToCaret();
+                        }));
+                    }
+                    else
+                    {
+                        txtConsole.AppendText(msg + " ");
+                    }
+                    Console.Write(msg + " ");
+                });
+
+                string strCompletion = "Training cancelled";
+
+                for (int epoch = 0; epoch < nEpochs.Value; epoch++)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        break; //cancellationToken.ThrowIfCancellationRequested();
+                    }
+
                     stopwatch.Restart();
 
-                    // Train one epoch
-                    double loss = nn.Train(trainInputs, trainOutputs, batchSize, epochs: 1);
+                    double loss = await Task.Run(() => 
+                    model.Train(trainInputs, trainOutputs, progress: progress, cancellationToken: cancellationToken));
 
                     stopwatch.Stop();
 
-                    // Calculate validation accuracy
                     double valAccuracy = trainer.CalculateAccuracy(valInputs, valOutputs);
 
-                    // Track best model
                     if (valAccuracy > bestAccuracy)
                     {
                         bestAccuracy = valAccuracy;
-                        // Save best model
-                        nn.SaveToFile(trainingFolder + "\\model.json");
+                        model.SaveToFile(trainingFolder + "\\model.json");
                     }
 
-                    // Progress report
+                    Console.WriteLine();
+                    Console.WriteLine(new string('-', 50));
                     Console.WriteLine("Epoch\tLoss\t\tVal Accuracy\tTime");
                     Console.WriteLine(new string('-', 50));
                     Console.WriteLine($"{epoch + 1}\t{loss:F6}\t{valAccuracy:P2}\t\t{stopwatch.ElapsedMilliseconds}ms");
+                    Console.WriteLine(new string('-', 50));
+                    Console.WriteLine();
 
-                    // Early stopping if we reach high accuracy
-                    if (valAccuracy > 0.99)
+                    if (valAccuracy > 0.999)
                     {
-                        Console.WriteLine("Reached 99% validation accuracy! Stopping early.");
+                        Console.WriteLine("Reached 99.9% validation accuracy! Stopping early.");
                         break;
                     }
+
+                    strCompletion = "Training complete";
                 }
 
-                Console.WriteLine($"Training complete! Best validation accuracy: {bestAccuracy:P2}");
+                Console.WriteLine($"{strCompletion}! Best validation accuracy: {bestAccuracy:P2}");
 
-                // Test on some validation samples
+                UpdateUI(() =>
+                {
+                    txtConsole.Text += $"\r\n{strCompletion}! Best validation accuracy: {bestAccuracy:P2}";
+                });
+
                 Console.WriteLine("Sample predictions:");
                 TestRandomSamples(valInputs, valOutputs, 10);
-
-                // Save final model
-                nn.SaveToFile(trainingFolder + "\\model.json");
-                Console.WriteLine("Model saved to 'model.json'");
-                txtConsole.Text += $"\r\nTraining complete! Best validation accuracy: {bestAccuracy:P2}";
-                txtConsole.Text += "\r\nModel saved to 'model.json'";
-                btnRunInference.Enabled = true;
             }
             catch (Exception ex)
             {
@@ -221,8 +239,27 @@ namespace NeuralNetwork
             }
             finally
             {
-                btnRunInference.Enabled = nn != null;
-                btnTrain.Enabled = true;
+                UpdateUI(() =>
+                {
+                    btnRunInference.Enabled = model != null;
+                    btnTrain.Enabled = true;
+                    btnStopTraining.Enabled = false;
+                });
+
+                _cancellationTokenSource?.Dispose();
+                _cancellationTokenSource = null;
+            }
+        }
+
+        private void UpdateUI(Action action)
+        {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(action);
+            }
+            else
+            {
+                action();
             }
         }
 
@@ -232,13 +269,7 @@ namespace NeuralNetwork
             {
                 if (sender is RadioButton)
                 {
-                    if (sender is RadioButton radio)
-                    {
-                        if (isBlackOnWhiteSelected != radioBlackOnWhite.Checked)
-                        {
-                            (inputsFromImage, _, isBlackOnWhiteSelected) = LoadSingleImage(testImagePath, isBlackOnWhite: radioBlackOnWhite.Checked);
-                        }
-                    }
+                    (inputsFromImage, _, isBlackOnWhiteSelected) = LoadSingleImage(testImagePath, isBlackOnWhite: radioBlackOnWhite.Checked);
                 }
             }
         }
@@ -259,11 +290,6 @@ namespace NeuralNetwork
 
                     Bitmap? bmp;
                     (inputsFromImage, bmp, isBlackOnWhiteSelected) = LoadSingleImage(testImagePath, isBlackOnWhite: radioBlackOnWhite.Checked);
-
-                    if (isBlackOnWhiteSelected != radioBlackOnWhite.Checked)
-                    {
-                        (inputsFromImage, bmp, isBlackOnWhiteSelected) = LoadSingleImage(testImagePath, isBlackOnWhite: isBlackOnWhiteSelected);
-                    }
 
                     if (isBlackOnWhiteSelected)
                     {
@@ -303,7 +329,7 @@ namespace NeuralNetwork
             {
                 Console.WriteLine("=== RUNNING INFERENCE ===");
 
-                if (nn == null)
+                if (model == null)
                 {
                     MessageBox.Show("No valid neural network was found.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
@@ -311,7 +337,7 @@ namespace NeuralNetwork
 
                 if (inputsFromImage != null && inputsFromImage.Count > 0)
                 {
-                    var prediction = nn.FeedForward(inputsFromImage); // Run inference
+                    var prediction = model.FeedForward(inputsFromImage); // Run inference
 
                     Console.WriteLine("Prediction results:");
                     Console.WriteLine("");
@@ -332,6 +358,17 @@ namespace NeuralNetwork
                     txtConsole.Text += $"\r\nPredicted digit: {predictedDigit} with {confidence:P1} confidence\r\n";
 
                     lblDigit.Text = $"{predictedDigit}";
+
+                    if (radioBlackOnWhite.Checked)
+                    {
+                        lblDigit.BackColor = Color.White;
+                        lblDigit.ForeColor = Color.Black;
+                    }
+                    else
+                    {
+                        lblDigit.BackColor = Color.Black;
+                        lblDigit.ForeColor = Color.White;
+                    }
                 }
                 else
                 {
@@ -432,7 +469,7 @@ namespace NeuralNetwork
 
         private void TestRandomSamples(List<List<double>> inputs, List<List<double>> outputs, int sampleCount)
         {
-            if (nn != null)
+            if (model != null)
             {
                 var random = new Random();
 
@@ -442,7 +479,7 @@ namespace NeuralNetwork
                     var input = inputs[idx];
                     var expected = outputs[idx];
 
-                    var prediction = nn.FeedForward(input);
+                    var prediction = model.FeedForward(input);
                     int predictedDigit = prediction.IndexOf(prediction.Max());
                     int actualDigit = expected.IndexOf(1.0);
 
@@ -457,6 +494,24 @@ namespace NeuralNetwork
                     {
                         Console.Write($"{p.Digit}({p.Confidence:P1}) ");
                     }
+                }
+            }
+        }
+
+        private void FormMain_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
+            {
+                var result = MessageBox.Show("Training is still in progress. Stop and exit?",
+                    "Confirm Exit", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                if (result == DialogResult.Yes)
+                {
+                    _cancellationTokenSource.Cancel();
+                }
+                else
+                {
+                    e.Cancel = true;
                 }
             }
         }

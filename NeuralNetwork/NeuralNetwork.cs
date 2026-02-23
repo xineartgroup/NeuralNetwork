@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace NeuralNetwork
 {
     [Serializable]
-    public class EnhancedNeuralNetwork
+    public class NeuralNetwork
     {
         [JsonInclude]
         public List<NeuralNetworkLayer> Layers { get; private set; } = [];
@@ -38,7 +38,7 @@ namespace NeuralNetwork
             Converters = { new MatrixConverter() }
         };
 
-        public EnhancedNeuralNetwork()
+        public NeuralNetwork()
         {
             // Initialize empty lists
             Layers = [];
@@ -49,7 +49,7 @@ namespace NeuralNetwork
         }
 
         [JsonConstructor]
-        public EnhancedNeuralNetwork(
+        public NeuralNetwork(
             List<NeuralNetworkLayer> layers,
             LossFunctionType lossFunction = LossFunctionType.MeanSquaredError)
         {
@@ -125,12 +125,6 @@ namespace NeuralNetwork
             return current.ToList();
         }
 
-        public double[] FeedForward(double[] inputArray)
-        {
-            var result = FeedForward(inputArray.ToList());
-            return [.. result];
-        }
-
         private (List<Matrix> Activations, List<Matrix> ZValues) FeedForwardWithCache(Matrix input)
         {
             var activations = new List<Matrix> { input };
@@ -150,15 +144,16 @@ namespace NeuralNetwork
             return (activations, zValues);
         }
 
-        public double Train(List<List<double>> inputs, List<List<double>> expectedOutputs, int batchSize = 32, int epochs = 1)
+        public double Train(List<List<double>> inputs, List<List<double>> expectedOutputs, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
         {
+            int batchSize = 32;
+
             if (inputs.Count != expectedOutputs.Count)
                 throw new ArgumentException("Number of inputs must match number of expected outputs");
 
             if (inputs.Count == 0)
                 throw new ArgumentException("Training data cannot be empty");
 
-            double totalLoss = 0;
             var trainingData = new List<(List<double> Input, List<double> Output)>();
 
             for (int i = 0; i < inputs.Count; i++)
@@ -166,30 +161,35 @@ namespace NeuralNetwork
                 trainingData.Add((inputs[i], expectedOutputs[i]));
             }
 
-            for (int epoch = 0; epoch < epochs; epoch++)
+            Shuffle(trainingData);
+
+            double epochLoss = 0;
+            int batches = 0;
+
+            int lastPercent = 0;
+
+            for (int i = 0; i < trainingData.Count; i += batchSize)
             {
-                Shuffle(trainingData);
-
-                double epochLoss = 0;
-                int batches = 0;
-
-                Console.WriteLine($"Total batches {trainingData.Count / batchSize}:");
-                for (int i = 0; i < trainingData.Count; i += batchSize)
+                var batch = trainingData.Skip(i).Take(batchSize).ToList();
+                if (batch.Count > 0)
                 {
-                    var batch = trainingData.Skip(i).Take(batchSize).ToList();
-                    if (batch.Count > 0)
+                    if (cancellationToken.IsCancellationRequested)
                     {
-                        epochLoss += TrainBatch(batch);
-                        Console.Write($"{batches + 1} ");
-                        batches++;
+                        break; //cancellationToken.ThrowIfCancellationRequested();
                     }
-                }
-                Console.WriteLine();
 
-                totalLoss = epochLoss / batches;
+                    epochLoss += TrainBatch(batch);
+                    int percent = (int)(i * 100.0 / trainingData.Count) + 1;
+                    if (lastPercent < percent)
+                    {
+                        progress?.Report($"{percent}% ");
+                        lastPercent = percent;
+                    }
+                    batches++;
+                }
             }
 
-            return totalLoss;
+            return epochLoss / batches;
         }
 
         private double TrainBatch(List<(List<double> Input, List<double> Output)> batch)
@@ -390,10 +390,10 @@ namespace NeuralNetwork
             File.WriteAllText(filePath, json);
         }
 
-        public static EnhancedNeuralNetwork? LoadFromFile(string filePath)
+        public static NeuralNetwork? LoadFromFile(string filePath)
         {
             string json = File.ReadAllText(filePath);
-            return JsonSerializer.Deserialize<EnhancedNeuralNetwork>(json, options);
+            return JsonSerializer.Deserialize<NeuralNetwork>(json, options);
         }
 
         private void Shuffle<T>(List<T> list)

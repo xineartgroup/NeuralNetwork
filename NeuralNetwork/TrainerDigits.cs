@@ -5,17 +5,16 @@ namespace NeuralNetwork
     /// <summary>
     /// Utility class for loading handwritten digit images and training the neural network
     /// </summary>
-    public class DigitTrainer
+    public class TrainerDigits
     {
-        private readonly EnhancedNeuralNetwork _network;
+        private readonly NeuralNetwork _network;
         private readonly string _trainingFolderPath;
         private readonly Random _random = new();
 
-        // Image processing constants
         private const int ImageSize = 28;
         private const int PixelCount = ImageSize * ImageSize; // 784
 
-        public DigitTrainer(EnhancedNeuralNetwork network, string trainingFolderPath)
+        public TrainerDigits(NeuralNetwork network, string trainingFolderPath)
         {
             _network = network ?? throw new ArgumentNullException(nameof(network));
             _trainingFolderPath = trainingFolderPath ?? throw new ArgumentNullException(nameof(trainingFolderPath));
@@ -24,9 +23,6 @@ namespace NeuralNetwork
                 throw new DirectoryNotFoundException($"Training folder not found: {trainingFolderPath}");
         }
 
-        /// <summary>
-        /// Load all digit images from the training folder structure
-        /// </summary>
         public (List<List<double>> inputs, List<List<double>> outputs, List<int> labels) LoadTrainingData()
         {
             var inputs = new List<List<double>>();
@@ -73,16 +69,12 @@ namespace NeuralNetwork
             return (inputs, outputs, labels);
         }
 
-        /// <summary>
-        /// Load and preprocess a single image using fast unsafe bitmap access
-        /// </summary>
         private (List<double> pixelValues, bool success) LoadAndProcessImage(string imagePath)
         {
             try
             {
                 using var bitmap = new Bitmap(imagePath);
 
-                // Verify image dimensions
                 if (bitmap.Width != ImageSize || bitmap.Height != ImageSize)
                 {
                     Console.WriteLine($"Warning: Image {imagePath} has dimensions {bitmap.Width}x{bitmap.Height}, expected 28x28. Resizing...");
@@ -91,7 +83,6 @@ namespace NeuralNetwork
 
                 var pixelValues = new List<double>(PixelCount);
 
-                // Lock the bitmap bits for fast unsafe access
                 Rectangle rect = new(0, 0, ImageSize, ImageSize);
                 BitmapData data = bitmap.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
 
@@ -107,18 +98,13 @@ namespace NeuralNetwork
                         {
                             int pos = x * 4; // 4 bytes per pixel (ARGB)
 
-                            // Read in BGRA order (typical for Windows bitmaps)
                             byte blue = row[pos];
                             byte green = row[pos + 1];
                             byte red = row[pos + 2];
                             // byte alpha = row[pos + 3]; // Alpha channel not needed for grayscale
 
-                            // Convert to grayscale using luminance formula
                             double grayscale = (0.299 * red + 0.587 * green + 0.114 * blue) / 255.0;
 
-                            // For MNIST-style images with white digits on black background,
-                            // we want higher values for white pixels. If your images are 
-                            // black on white, use (1.0 - grayscale) instead.
                             double normalized = grayscale;
 
                             pixelValues.Add(normalized);
@@ -136,15 +122,11 @@ namespace NeuralNetwork
             }
         }
 
-        /// <summary>
-        /// Resize and process images that aren't 28x28 (using fast pixel access)
-        /// </summary>
         private List<double> ResizeAndProcessImage(string imagePath)
         {
             using var original = new Bitmap(imagePath);
             using var resized = new Bitmap(ImageSize, ImageSize);
 
-            // Resize the image
             using (var graphics = Graphics.FromImage(resized))
             {
                 graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
@@ -153,7 +135,6 @@ namespace NeuralNetwork
 
             var pixelValues = new List<double>(PixelCount);
 
-            // Lock the resized bitmap for fast unsafe access
             Rectangle rect = new(0, 0, ImageSize, ImageSize);
             BitmapData data = resized.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
 
@@ -183,9 +164,6 @@ namespace NeuralNetwork
             return pixelValues;
         }
 
-        /// <summary>
-        /// Create one-hot encoded output for a digit (0-9)
-        /// </summary>
         private static List<double> CreateOneHotOutput(int digit)
         {
             var output = new List<double>(10);
@@ -196,9 +174,6 @@ namespace NeuralNetwork
             return output;
         }
 
-        /// <summary>
-        /// Normalize all inputs to have zero mean and unit variance
-        /// </summary>
         public static void NormalizeInputs(List<List<double>> inputs)
         {
             if (inputs == null || inputs.Count == 0)
@@ -231,14 +206,9 @@ namespace NeuralNetwork
             }
         }
 
-        /// <summary>
-        /// Augment training data with small variations to improve generalization
-        /// </summary>
-        public List<(List<double> Input, List<double> Output)> AugmentData(
-            List<List<double>> inputs,
-            List<List<double>> outputs,
-            int augmentationFactor = 1)
+        public List<(List<double> Input, List<double> Output)> AugmentData(List<List<double>> inputs, List<List<double>> outputs, int augmentationFactor = 1)
         {
+            // Augment training data with small variations to improve generalization
             var augmented = new List<(List<double>, List<double>)>();
 
             // Add original data
@@ -264,9 +234,6 @@ namespace NeuralNetwork
             return augmented;
         }
 
-        /// <summary>
-        /// Add small random noise to input for data augmentation
-        /// </summary>
         private List<double> AddRandomNoise(List<double> input, double noiseLevel)
         {
             var noisy = new List<double>(input.Count);
@@ -278,12 +245,8 @@ namespace NeuralNetwork
             return noisy;
         }
 
-        /// <summary>
-        /// Split data into training and validation sets
-        /// </summary>
-        public (List<List<double>> trainInputs, List<List<double>> trainOutputs,
-                List<List<double>> valInputs, List<List<double>> valOutputs)
-            SplitData(List<List<double>> inputs, List<List<double>> outputs, double validationRatio = 0.2)
+        public (List<List<double>> trainInputs, List<List<double>> trainOutputs, List<List<double>> valInputs, List<List<double>> valOutputs)
+            SplitData(List<List<double>> inputs, List<List<double>> outputs, double validationRatio = 0.1)
         {
             int validationCount = (int)(inputs.Count * validationRatio);
             var indices = Enumerable.Range(0, inputs.Count).ToList();
@@ -318,9 +281,6 @@ namespace NeuralNetwork
             return (trainInputs, trainOutputs, valInputs, valOutputs);
         }
 
-        /// <summary>
-        /// Calculate accuracy on validation data
-        /// </summary>
         public double CalculateAccuracy(List<List<double>> inputs, List<List<double>> expectedOutputs)
         {
             int correct = 0;
