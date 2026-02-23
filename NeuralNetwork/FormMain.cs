@@ -111,59 +111,84 @@ namespace NeuralNetwork
         {
             try
             {
-                string trainingFolder = txtFIle.Text;
+                string baseFolder = txtFIle.Text;
+                if (string.IsNullOrWhiteSpace(baseFolder) || !Directory.Exists(baseFolder))
+                {
+                    Console.WriteLine("Invalid or missing base folder.");
+                    return;
+                }
+
+                string trainSubFolder = Path.Combine(baseFolder, "training");
+                string testSubFolder = Path.Combine(baseFolder, "testing");
+
+                if (!Directory.Exists(trainSubFolder))
+                {
+                    Console.WriteLine($"Training subfolder not found: {trainSubFolder}");
+                    return;
+                }
+                if (!Directory.Exists(testSubFolder))
+                {
+                    Console.WriteLine($"Testing/validation subfolder not found: {testSubFolder}");
+                    return;
+                }
 
                 Console.WriteLine("=== Handwritten Digit Recognition Neural Network ===");
-
                 if (model == null)
                 {
                     Console.WriteLine("No valid neural network was found.");
                     return;
                 }
 
-                var trainer = new TrainerDigits(model, trainingFolder);
+                var trainer = new TrainerDigits(model, baseFolder);  // or pass trainSubFolder if the class needs it
 
                 Console.WriteLine("Loading training data...");
                 var stopwatch = Stopwatch.StartNew();
-
-                var (inputs, outputs, labels) = trainer.LoadTrainingData();
-
+                var (trainInputs, trainOutputs, trainLabels) = trainer.LoadTrainingData(trainSubFolder);
                 stopwatch.Stop();
-                Console.WriteLine($"Loaded {inputs.Count} images in {stopwatch.ElapsedMilliseconds}ms");
+                Console.WriteLine($"Loaded {trainInputs.Count} training images in {stopwatch.ElapsedMilliseconds}ms");
 
-                if (inputs.Count == 0)
+                if (trainInputs.Count == 0)
                 {
-                    Console.WriteLine("No images found! Please check your folder structure.");
+                    Console.WriteLine("No training images found! Please check your folder structure.");
                     return;
                 }
 
-                Console.WriteLine("Class distribution:");
+                Console.WriteLine("Training class distribution:");
                 for (int i = 0; i < 10; i++)
                 {
-                    int count = labels.Count(l => l == i);
+                    int count = trainLabels.Count(l => l == i);
                     Console.WriteLine($"Digit {i}: {count} images");
                 }
 
-                Console.WriteLine("Normalizing inputs...");
-                TrainerDigits.NormalizeInputs(inputs);
+                Console.WriteLine("Loading validation / test data...");
+                stopwatch.Restart();
+                var (valInputs, valOutputs, valLabels) = trainer.LoadTrainingData(testSubFolder);
+                stopwatch.Stop();
+                Console.WriteLine($"Loaded {valInputs.Count} validation images in {stopwatch.ElapsedMilliseconds}ms");
+
+                if (valInputs.Count == 0)
+                {
+                    Console.WriteLine("Warning: No validation images found. Training will continue without validation.");
+                }
+
+                Console.WriteLine("Normalizing training inputs...");
+                TrainerDigits.NormalizeInputs(trainInputs);
 
                 Console.WriteLine("Augmenting training data...");
-                var augmentedData = trainer.AugmentData(inputs, outputs, augmentationFactor: 1);
-                var augInputs = augmentedData.Select(x => x.Input).ToList();
-                var augOutputs = augmentedData.Select(x => x.Output).ToList();
+                var augmentedData = trainer.AugmentData(trainInputs, trainOutputs, augmentationFactor: 1);
+                var augTrainInputs = augmentedData.Select(x => x.Input).ToList();
+                var augTrainOutputs = augmentedData.Select(x => x.Output).ToList();
+                Console.WriteLine($"Augmented training dataset size: {augTrainInputs.Count} images");
 
-                Console.WriteLine($"Augmented dataset size: {augInputs.Count} images");
-
-                Console.WriteLine("Splitting data into training and validation sets...");
-                var (trainInputs, trainOutputs, valInputs, valOutputs) = trainer.SplitData(augInputs, augOutputs, validationRatio: 0.1);
-
-                Console.WriteLine($"Training samples: {trainInputs.Count}");
-                Console.WriteLine($"Validation samples: {valInputs.Count}");
+                // Normalize validation set (do NOT augment validation/test)
+                if (valInputs.Count > 0)
+                {
+                    Console.WriteLine("Normalizing validation inputs...");
+                    TrainerDigits.NormalizeInputs(valInputs);
+                }
 
                 Console.WriteLine("Starting training...");
-
                 double bestAccuracy = 0;
-
                 var progress = new Progress<string>(msg =>
                 {
                     if (txtConsole.InvokeRequired)
@@ -187,33 +212,47 @@ namespace NeuralNetwork
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
-                        break; //cancellationToken.ThrowIfCancellationRequested();
+                        break;
                     }
 
                     stopwatch.Restart();
-
-                    double loss = await Task.Run(() => 
-                    model.Train(trainInputs, trainOutputs, progress: progress, cancellationToken: cancellationToken));
-
+                    double loss = await Task.Run(() =>
+                        model.Train(augTrainInputs, augTrainOutputs, progress: progress, cancellationToken: cancellationToken));
                     stopwatch.Stop();
 
-                    double valAccuracy = trainer.CalculateAccuracy(valInputs, valOutputs);
+                    double valAccuracy = 0;
+                    if (valInputs.Count > 0)
+                    {
+                        valAccuracy = trainer.CalculateAccuracy(valInputs, valOutputs);
+                    }
+                    else
+                    {
+                        valAccuracy = -1; // marker that no validation is available
+                    }
 
-                    if (valAccuracy > bestAccuracy)
+                    if (valInputs.Count > 0 && valAccuracy > bestAccuracy)
                     {
                         bestAccuracy = valAccuracy;
-                        model.SaveToFile(trainingFolder + "\\model.json");
+                        model.SaveToFile(baseFolder + "\\model.json");
                     }
 
                     Console.WriteLine();
                     Console.WriteLine(new string('-', 50));
                     Console.WriteLine("Epoch\tLoss\t\tVal Accuracy\tTime");
                     Console.WriteLine(new string('-', 50));
-                    Console.WriteLine($"{epoch + 1}\t{loss:F6}\t{valAccuracy:P2}\t\t{stopwatch.ElapsedMilliseconds}ms");
+
+                    UpdateUI(() =>
+                    {
+                        txtConsole.Text += $"\r\n{new string('-', 50)}\r\n";
+                    });
+
+                    string valStr = (valInputs.Count > 0) ? $"{valAccuracy:P2}" : "N/A";
+                    Console.WriteLine($"{epoch + 1}\t{loss:F6}\t{valStr}\t\t{stopwatch.ElapsedMilliseconds}ms");
+
                     Console.WriteLine(new string('-', 50));
                     Console.WriteLine();
 
-                    if (valAccuracy > 0.999)
+                    if (valInputs.Count > 0 && valAccuracy > 0.999)
                     {
                         Console.WriteLine("Reached 99.9% validation accuracy! Stopping early.");
                         break;
@@ -222,15 +261,21 @@ namespace NeuralNetwork
                     strCompletion = "Training complete";
                 }
 
-                Console.WriteLine($"{strCompletion}! Best validation accuracy: {bestAccuracy:P2}");
+                string bestMsg = (valInputs.Count > 0)
+                    ? $"Best validation accuracy: {bestAccuracy:P2}"
+                    : "No validation set was used";
 
+                Console.WriteLine($"{strCompletion}! {bestMsg}");
                 UpdateUI(() =>
                 {
-                    txtConsole.Text += $"\r\n{strCompletion}! Best validation accuracy: {bestAccuracy:P2}";
+                    txtConsole.Text += $"\r\n{strCompletion}! {bestMsg}\r\n";
                 });
 
-                Console.WriteLine("Sample predictions:");
-                TestRandomSamples(valInputs, valOutputs, 10);
+                if (valInputs.Count > 0)
+                {
+                    Console.WriteLine("Sample predictions on validation set:");
+                    TestRandomSamples(valInputs, valOutputs, 10);
+                }
             }
             catch (Exception ex)
             {
@@ -245,7 +290,6 @@ namespace NeuralNetwork
                     btnTrain.Enabled = true;
                     btnStopTraining.Enabled = false;
                 });
-
                 _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = null;
             }

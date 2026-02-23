@@ -23,7 +23,7 @@ namespace NeuralNetwork
                 throw new DirectoryNotFoundException($"Training folder not found: {trainingFolderPath}");
         }
 
-        public (List<List<double>> inputs, List<List<double>> outputs, List<int> labels) LoadTrainingData()
+        public (List<List<double>> inputs, List<List<double>> outputs, List<int> labels) LoadTrainingData(string folderPath)
         {
             var inputs = new List<List<double>>();
             var outputs = new List<List<double>>();
@@ -32,7 +32,7 @@ namespace NeuralNetwork
             // Process folders 0 through 9
             for (int digit = 0; digit <= 9; digit++)
             {
-                string digitFolder = Path.Combine(_trainingFolderPath, digit.ToString());
+                string digitFolder = Path.Combine(folderPath, digit.ToString());
 
                 if (!Directory.Exists(digitFolder))
                 {
@@ -243,42 +243,6 @@ namespace NeuralNetwork
                 noisy.Add(Math.Clamp(value + noise, 0, 1));
             }
             return noisy;
-        }
-
-        public (List<List<double>> trainInputs, List<List<double>> trainOutputs, List<List<double>> valInputs, List<List<double>> valOutputs)
-            SplitData(List<List<double>> inputs, List<List<double>> outputs, double validationRatio = 0.1)
-        {
-            int validationCount = (int)(inputs.Count * validationRatio);
-            var indices = Enumerable.Range(0, inputs.Count).ToList();
-
-            // Shuffle indices
-            for (int i = indices.Count - 1; i > 0; i--)
-            {
-                int j = _random.Next(i + 1);
-                (indices[i], indices[j]) = (indices[j], indices[i]);
-            }
-
-            var trainInputs = new List<List<double>>();
-            var trainOutputs = new List<List<double>>();
-            var valInputs = new List<List<double>>();
-            var valOutputs = new List<List<double>>();
-
-            for (int i = 0; i < indices.Count; i++)
-            {
-                int idx = indices[i];
-                if (i < validationCount)
-                {
-                    valInputs.Add(inputs[idx]);
-                    valOutputs.Add(outputs[idx]);
-                }
-                else
-                {
-                    trainInputs.Add(inputs[idx]);
-                    trainOutputs.Add(outputs[idx]);
-                }
-            }
-
-            return (trainInputs, trainOutputs, valInputs, valOutputs);
         }
 
         public double CalculateAccuracy(List<List<double>> inputs, List<List<double>> expectedOutputs)

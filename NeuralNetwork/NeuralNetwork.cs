@@ -40,7 +40,6 @@ namespace NeuralNetwork
 
         public NeuralNetwork()
         {
-            // Initialize empty lists
             Layers = [];
             Weights = [];
             Biases = [];
@@ -49,9 +48,7 @@ namespace NeuralNetwork
         }
 
         [JsonConstructor]
-        public NeuralNetwork(
-            List<NeuralNetworkLayer> layers,
-            LossFunctionType lossFunction = LossFunctionType.MeanSquaredError)
+        public NeuralNetwork(List<NeuralNetworkLayer> layers, LossFunctionType lossFunction)
         {
             if (layers == null || layers.Count < 2)
                 throw new ArgumentException("Network must have at least 2 layers");
@@ -144,7 +141,7 @@ namespace NeuralNetwork
             return (activations, zValues);
         }
 
-        public double Train(List<List<double>> inputs, List<List<double>> expectedOutputs, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+        public double Train(List<List<double>> inputs, List<List<double>> expectedOutputs, IProgress<string> progress, CancellationToken cancellationToken)
         {
             int batchSize = 32;
 
@@ -182,7 +179,7 @@ namespace NeuralNetwork
                     int percent = (int)(i * 100.0 / trainingData.Count) + 1;
                     if (lastPercent < percent)
                     {
-                        progress?.Report($"{percent}% ");
+                        progress.Report($"{percent}% ");
                         lastPercent = percent;
                     }
                     batches++;

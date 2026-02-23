@@ -64,11 +64,11 @@
             txtFIle.Name = "txtFIle";
             txtFIle.Size = new Size(290, 23);
             txtFIle.TabIndex = 1;
-            txtFIle.Text = "C:\\Users\\obinn\\source\\repos\\AI\\NeuralNetwork\\src\\_mnist_png\\training";
+            txtFIle.Text = "C:\\Users\\obinn\\source\\repos\\AI\\NeuralNetwork\\src\\_mnist_png";
             // 
             // btnTrain
             // 
-            btnTrain.Location = new Point(310, 46);
+            btnTrain.Location = new Point(161, 46);
             btnTrain.Name = "btnTrain";
             btnTrain.Size = new Size(141, 26);
             btnTrain.TabIndex = 0;
@@ -88,10 +88,9 @@
             // 
             // btnRunInference
             // 
-            btnRunInference.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             btnRunInference.Enabled = false;
             btnRunInference.FlatStyle = FlatStyle.Popup;
-            btnRunInference.Location = new Point(365, 128);
+            btnRunInference.Location = new Point(216, 125);
             btnRunInference.Name = "btnRunInference";
             btnRunInference.Size = new Size(28, 28);
             btnRunInference.TabIndex = 0;
@@ -101,10 +100,9 @@
             // 
             // pictureDigit
             // 
-            pictureDigit.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             pictureDigit.BackColor = Color.White;
             pictureDigit.BorderStyle = BorderStyle.Fixed3D;
-            pictureDigit.Location = new Point(309, 116);
+            pictureDigit.Location = new Point(160, 113);
             pictureDigit.Name = "pictureDigit";
             pictureDigit.Size = new Size(50, 50);
             pictureDigit.SizeMode = PictureBoxSizeMode.Zoom;
@@ -114,11 +112,10 @@
             // 
             // lblDigit
             // 
-            lblDigit.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             lblDigit.BackColor = Color.White;
             lblDigit.BorderStyle = BorderStyle.Fixed3D;
             lblDigit.Font = new Font("Segoe UI", 24F, FontStyle.Bold, GraphicsUnit.Point, 0);
-            lblDigit.Location = new Point(399, 116);
+            lblDigit.Location = new Point(250, 113);
             lblDigit.Name = "lblDigit";
             lblDigit.Size = new Size(50, 50);
             lblDigit.TabIndex = 5;
@@ -128,7 +125,7 @@
             // 
             groupBox1.Controls.Add(radioBlackOnWhite);
             groupBox1.Controls.Add(radioWhiteOnBlack);
-            groupBox1.Location = new Point(139, 81);
+            groupBox1.Location = new Point(12, 78);
             groupBox1.Name = "groupBox1";
             groupBox1.Size = new Size(143, 85);
             groupBox1.TabIndex = 6;
@@ -162,7 +159,7 @@
             // btnStopTraining
             // 
             btnStopTraining.Enabled = false;
-            btnStopTraining.Location = new Point(309, 75);
+            btnStopTraining.Location = new Point(160, 75);
             btnStopTraining.Name = "btnStopTraining";
             btnStopTraining.Size = new Size(141, 26);
             btnStopTraining.TabIndex = 0;
@@ -172,8 +169,7 @@
             // 
             // nEpochs
             // 
-            nEpochs.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            nEpochs.Location = new Point(232, 49);
+            nEpochs.Location = new Point(105, 46);
             nEpochs.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
             nEpochs.Name = "nEpochs";
             nEpochs.Size = new Size(50, 23);
@@ -183,7 +179,7 @@
             // label1
             // 
             label1.AutoSize = true;
-            label1.Location = new Point(181, 51);
+            label1.Location = new Point(54, 48);
             label1.Name = "label1";
             label1.Size = new Size(45, 15);
             label1.TabIndex = 8;
