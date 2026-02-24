@@ -95,14 +95,14 @@ namespace NeuralNetwork
             }
         }
 
-        private double GetInitializationScale(int layer)
+        private double GetInitializationScale(int layerIndex)
         {
-            if (Layers[layer + 1].ActivationFunction == ActivationFunctionType.ReLU ||
-                Layers[layer + 1].ActivationFunction == ActivationFunctionType.LeakyReLU)
+            if (Layers[layerIndex + 1].ActivationFunction == ActivationFunctionType.ReLU ||
+                Layers[layerIndex + 1].ActivationFunction == ActivationFunctionType.LeakyReLU)
             {
-                return Math.Sqrt(2.0 / Layers[layer].LayerSize);
+                return Math.Sqrt(2.0 / Layers[layerIndex].LayerSize);
             }
-            return Math.Sqrt(1.0 / Layers[layer].LayerSize);
+            return Math.Sqrt(1.0 / Layers[layerIndex].LayerSize);
         }
 
         public List<double> FeedForward(List<double> inputs)

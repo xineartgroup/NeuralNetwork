@@ -119,8 +119,8 @@
                 {
                     if (inputs[i].Count == ImageManip.PixelCount)
                     {
-                        var noisyInput = AddRandomNoise(inputs[i], noiseLevel: 0.05);
-                        augmented.Add((noisyInput, outputs[i]));
+                        //var noisyInput = AddRandomNoise(inputs[i], noiseLevel: 0.05);
+                        //augmented.Add((noisyInput, outputs[i]));
 
                         var rotatedInput = RotateImage(inputs[i], angleDegrees: (rand.NextDouble() * 30) - 15);
                         augmented.Add((rotatedInput, outputs[i]));

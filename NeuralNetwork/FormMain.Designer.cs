@@ -49,7 +49,7 @@
             // btnBrowse
             // 
             btnBrowse.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnBrowse.Location = new Point(431, 14);
+            btnBrowse.Location = new Point(581, 14);
             btnBrowse.Name = "btnBrowse";
             btnBrowse.Size = new Size(140, 26);
             btnBrowse.TabIndex = 0;
@@ -62,7 +62,7 @@
             txtFIle.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             txtFIle.Location = new Point(12, 14);
             txtFIle.Name = "txtFIle";
-            txtFIle.Size = new Size(410, 23);
+            txtFIle.Size = new Size(560, 23);
             txtFIle.TabIndex = 1;
             txtFIle.Text = "C:\\Users\\obinn\\source\\repos\\AI\\NeuralNetwork\\src\\_mnist_png";
             // 
@@ -83,7 +83,7 @@
             txtConsole.Multiline = true;
             txtConsole.Name = "txtConsole";
             txtConsole.ScrollBars = ScrollBars.Both;
-            txtConsole.Size = new Size(560, 177);
+            txtConsole.Size = new Size(710, 277);
             txtConsole.TabIndex = 2;
             // 
             // btnRunInference
@@ -189,7 +189,7 @@
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(584, 361);
+            ClientSize = new Size(734, 461);
             Controls.Add(label1);
             Controls.Add(nEpochs);
             Controls.Add(groupBox1);
